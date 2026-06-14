@@ -1,0 +1,33 @@
+# ── Project memory (machine-specific, contains local paths) ──
+
+# ── Build output ──
+[Bb]in/
+[Oo]bj/
+publish/
+*.user
+*.suo
+
+# ── .NET / Visual Studio ──
+.vs/
+*.userprefs
+*.cache
+*.log
+project.lock.json
+project.assets.json
+
+# ── Rider / VS Code ──
+.idea/
+.vscode/
+
+# ── OS cruft ──
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# ── Runtime / local data ──
+sessions/
+*.pem
+*.ppk
+*.key

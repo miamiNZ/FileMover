@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>File Mover</title>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+
+<!-- ── Title bar ────────────────────────────────────────────────── -->
+<header class="titlebar">
+  <span class="app-title">File Mover <span class="app-badge">Web</span></span>
+  <button id="themeBtn" class="btn-icon" onclick="toggleTheme()">Light Mode</button>
+</header>
+
+<!-- ── Main content ─────────────────────────────────────────────── -->
+<main class="content">
+
+  <!-- OPTIONS -->
+  <section class="panel">
+    <div class="panel-header">OPTIONS</div>
+    <div class="panel-body options-body">
+      <div class="options-left">
+
+        <div class="opt-row">
+          <span class="opt-label">Operation:</span>
+          <label class="radio-lbl"><input type="radio" name="operation" value="Copy" checked onchange="onOperationChange()"/><span class="radio-dot"></span>Copy</label>
+          <label class="radio-lbl"><input type="radio" name="operation" value="Move" onchange="onOperationChange()"/><span class="radio-dot"></span>Move</label>
+        </div>
+
+        <div class="opt-row">
+          <span class="opt-label">Mode:</span>
+          <label class="radio-lbl"><input type="radio" name="mode" value="File" onchange="onModeChange()"/><span class="radio-dot"></span>Single file</label>
+          <label class="radio-lbl"><input type="radio" name="mode" value="MultipleFiles" onchange="onModeChange()"/><span class="radio-dot"></span>Multiple files</label>
+          <label class="radio-lbl"><input type="radio" name="mode" value="Folder" checked onchange="onModeChange()"/><span class="radio-dot"></span>Folder contents</label>
+        </div>
+
+        <div class="opt-row chk-row">
+          <label class="chk-lbl"><input type="checkbox" id="chkVerify" checked/><span class="chk-box"></span>Verify (MD5)</label>
+          <label class="chk-lbl"><input type="checkbox" id="chkOverwrite" checked/><span class="chk-box"></span>Overwrite existing</label>
+          <label class="chk-lbl"><input type="checkbox" id="chkRecursive" checked/><span class="chk-box"></span>Recursive</label>
+        </div>
+
+        <div class="opt-row">
+          <label class="chk-lbl"><input type="checkbox" id="chkPerms" checked/><span class="chk-box"></span>Set permissions (SSH):</label>
+          <input type="text" id="txtPermMode" value="644" class="perm-input" title="Octal file mode, e.g. 644"/>
+          <span class="subtext">(octal)</span>
+        </div>
+
+      </div>
+      <div class="options-sep"></div>
+      <div class="options-right">
+        <span class="subtext small">Concurrent transfers</span>
+        <div class="slider-row">
+          <input type="range" id="sldThreads" min="1" max="16" value="4" oninput="document.getElementById('threadCount').textContent=this.value"/>
+          <span id="threadCount" class="thread-count accent-text">4</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOURCE -->
+  <section class="panel">
+    <div class="panel-header">SOURCE</div>
+    <div class="panel-body">
+      <div class="opt-row">
+        <span class="opt-label">Type:</span>
+        <label class="radio-lbl"><input type="radio" name="srcType" value="Local" checked onchange="onSrcTypeChange()"/><span class="radio-dot"></span>Local</label>
+        <label class="radio-lbl"><input type="radio" name="srcType" value="SSH" onchange="onSrcTypeChange()"/><span class="radio-dot"></span>SSH</label>
+      </div>
+
+      <!-- Local path row -->
+      <div id="srcLocalRow" class="path-row">
+        <label class="field-label">Path:</label>
+        <input type="text" id="srcPath" class="path-input" placeholder="Enter local path…"/>
+        <button class="btn btn-sm" onclick="openBrowse('srcPath','src')">Browse…</button>
+      </div>
+      <!-- SSH remote path row -->
+      <div id="srcSshRow" class="path-row hidden">
+        <label class="field-label">Path:</label>
+        <input type="text" id="srcSshPath" class="path-input" placeholder="Connect first, then enter remote path…" disabled/>
+        <button class="btn btn-sm" id="btnSrcSshBrowse" onclick="openBrowse('srcSshPath','src')" disabled>Browse…</button>
+      </div>
+
+      <!-- Multiple-files list -->
+      <div id="srcMultiPanel" class="sub-panel hidden">
+        <ul id="srcFileList" class="file-list"></ul>
+        <div class="multi-controls">
+          <input type="text" id="srcAddInput" class="path-input" placeholder="Enter file path to add…" style="flex:1"/>
+          <button class="btn" onclick="addSrcFile()">Add</button>
+          <button class="btn" id="btnSrcMultiBrowse" onclick="openBrowse('srcMulti','src')">Browse…</button>
+          <button class="btn" onclick="removeSrcFiles()">Remove selected</button>
+          <button class="btn" onclick="clearSrcFiles()">Clear all</button>
+        </div>
+      </div>
+
+      <!-- SSH settings -->
+      <div id="srcSSHPanel" class="sub-panel hidden">
+        <div class="ssh-grid">
+          <label class="field-label">Host:</label>
+          <input type="text" id="srcHost" class="field-input"/>
+          <label class="field-label port-lbl">Port:</label>
+          <input type="number" id="srcPort" value="22" min="1" max="65535" class="port-input"/>
+          <label class="field-label">Username:</label>
+          <input type="text" id="srcUser" class="field-input"/>
+        </div>
+        <div class="auth-row">
+          <label class="radio-lbl"><input type="radio" name="srcAuth" value="password" checked onchange="onSrcAuthChange()"/><span class="radio-dot"></span>Password:</label>
+          <input type="password" id="srcPwd" class="field-input auth-input"/>
+          <label class="radio-lbl" style="margin-left:12px"><input type="radio" name="srcAuth" value="key" onchange="onSrcAuthChange()"/><span class="radio-dot"></span>Key file:</label>
+          <input type="text" id="srcKey" class="field-input auth-input" disabled placeholder="Path to private key"/>
+        </div>
+        <div class="ssh-connect-row">
+          <button class="btn btn-sm" id="btnSrcConnect" onclick="sshConnect('src')">Connect</button>
+          <span id="srcConnectStatus" class="ssh-status"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DESTINATION -->
+  <section class="panel">
+    <div class="panel-header">DESTINATION</div>
+    <div class="panel-body">
+      <div class="opt-row">
+        <span class="opt-label">Type:</span>
+        <label class="radio-lbl"><input type="radio" name="dstType" value="Local" checked onchange="onDstTypeChange()"/><span class="radio-dot"></span>Local</label>
+        <label class="radio-lbl"><input type="radio" name="dstType" value="SSH" onchange="onDstTypeChange()"/><span class="radio-dot"></span>SSH</label>
+      </div>
+
+      <!-- Local path row -->
+      <div id="dstLocalRow" class="path-row">
+        <label class="field-label">Path:</label>
+        <input type="text" id="dstPath" class="path-input" placeholder="Enter local path…"/>
+        <button class="btn btn-sm" onclick="openBrowse('dstPath','dst')">Browse…</button>
+      </div>
+      <!-- SSH remote path row -->
+      <div id="dstSshRow" class="path-row hidden">
+        <label class="field-label">Path:</label>
+        <input type="text" id="dstSshPath" class="path-input" placeholder="Connect first, then enter remote path…" disabled/>
+        <button class="btn btn-sm" id="btnDstSshBrowse" onclick="openBrowse('dstSshPath','dst')" disabled>Browse…</button>
+      </div>
+
+      <!-- Destination free space -->
+      <div id="dstFreeSpaceRow" class="free-space-row hidden">
+        <span class="opt-label" style="min-width:76px">Free space:</span>
+        <span id="txtDstFreeSpace" class="free-space-text">—</span>
+      </div>
+
+      <!-- SSH settings -->
+      <div id="dstSSHPanel" class="sub-panel hidden">
+        <div class="ssh-grid">
+          <label class="field-label">Host:</label>
+          <input type="text" id="dstHost" class="field-input"/>
+          <label class="field-label port-lbl">Port:</label>
+          <input type="number" id="dstPort" value="22" min="1" max="65535" class="port-input"/>
+          <label class="field-label">Username:</label>
+          <input type="text" id="dstUser" class="field-input"/>
+        </div>
+        <div class="auth-row">
+          <label class="radio-lbl"><input type="radio" name="dstAuth" value="password" checked onchange="onDstAuthChange()"/><span class="radio-dot"></span>Password:</label>
+          <input type="password" id="dstPwd" class="field-input auth-input"/>
+          <label class="radio-lbl" style="margin-left:12px"><input type="radio" name="dstAuth" value="key" onchange="onDstAuthChange()"/><span class="radio-dot"></span>Key file:</label>
+          <input type="text" id="dstKey" class="field-input auth-input" disabled placeholder="Path to private key"/>
+        </div>
+        <div class="ssh-connect-row">
+          <button class="btn btn-sm" id="btnDstConnect" onclick="sshConnect('dst')">Connect</button>
+          <span id="dstConnectStatus" class="ssh-status"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROGRESS -->
+  <section class="panel">
+    <div class="panel-header">PROGRESS</div>
+    <div class="panel-body progress-body">
+      <div class="progress-row">
+        <span class="progress-lbl subtext">Overall:</span>
+        <div class="progress-track">
+          <div id="pbOverall" class="progress-fill" style="width:0%"></div>
+        </div>
+        <span id="txtOverallPct" class="pct-text accent-text">0%</span>
+      </div>
+      <div class="progress-row">
+        <span class="progress-lbl subtext">Current:</span>
+        <div class="progress-track">
+          <div id="pbCurrent" class="progress-fill alt-fill" style="width:0%"></div>
+        </div>
+        <span id="txtCurrentPct" class="pct-text alt-text">0%</span>
+      </div>
+      <div id="txtCurrentFile" class="current-file subtext mono">—</div>
+
+      <div class="stats-grid">
+        <div class="stat-cell">
+          <div class="stat-label subtext">SPEED</div>
+          <div id="txtSpeed" class="stat-value success-text">—</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label subtext">ETA</div>
+          <div id="txtETA" class="stat-value warning-text">—</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label subtext">TIME</div>
+          <div id="txtTime" class="stat-value accent-text">—</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label subtext">FILES</div>
+          <div id="txtFiles" class="stat-value">—</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label subtext">DATA</div>
+          <div id="txtBytes" class="stat-value">—</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOG -->
+  <section class="panel log-panel">
+    <div class="panel-header">LOG</div>
+    <div class="panel-body log-body">
+      <div id="logList" class="log-list"></div>
+      <button class="btn btn-sm log-clear" onclick="document.getElementById('logList').innerHTML=''">Clear log</button>
+    </div>
+  </section>
+
+  <!-- ACTION BAR -->
+  <footer class="action-bar">
+    <span id="txtStatus" class="status-text subtext">Ready</span>
+    <div class="action-btns">
+      <button id="btnStart" class="btn btn-accent" onclick="startCopy()" disabled>&#x25B6; Start Copy</button>
+      <button id="btnCancel" class="btn btn-danger" onclick="cancelCopy()" disabled>&#x2715; Cancel</button>
+    </div>
+  </footer>
+
+</main>
+
+<!-- ── File browser modal ────────────────────────────────────────── -->
+<div id="browseModal" class="modal-overlay hidden" onclick="onModalOverlayClick(event)">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <span id="browseTitle" class="modal-title">Browse</span>
+      <button class="btn-icon" onclick="closeBrowse()">&#x2715;</button>
+    </div>
+    <div class="modal-path-bar">
+      <button class="btn btn-sm" onclick="browseUp()" id="btnBrowseUp">&#x2191; Up</button>
+      <input type="text" id="browseCurPath" class="browse-path-input mono" placeholder="Enter path…"
+             onkeydown="if(event.key==='Enter')browseGoToPath()"/>
+      <button class="btn btn-sm" onclick="browseGoToPath()">Go</button>
+    </div>
+    <div id="browseList" class="browse-list"></div>
+    <div class="modal-footer">
+      <span id="browseSelText" class="subtext browse-sel-text"></span>
+      <div class="modal-btns">
+        <button class="btn btn-sm" id="btnBrowseFolder" onclick="browseSelectFolder()">Select Folder</button>
+        <button class="btn btn-accent btn-sm" id="btnBrowseOk" onclick="browseOk()" disabled>Select</button>
+        <button class="btn btn-sm" onclick="closeBrowse()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"
+        integrity="sha512-7rhBJh1om/W5Ztx7WiYOR9h2wlSaTmPyQMoHFtbT/FVNIA12y6S6I8HY9mrBS1uJ3dSU/R3qaSAXsGYuRjMDxg=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="app.js"></script>
+</body>
+</html>

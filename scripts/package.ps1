@@ -14,7 +14,7 @@ New-Item -ItemType Directory -Path $dist | Out-Null
 $sums = @()
 foreach ($rt in $Runtimes) {
     $exe = Join-Path $root "publish\$rt\FileMover.exe"
-    if (-not (Test-Path $exe)) { throw "Missing $exe — run 'make publish RUNTIME=$rt' first." }
+    if (-not (Test-Path $exe)) { throw "Missing $exe - run 'make publish RUNTIME=$rt' first." }
 
     $zip = Join-Path $dist "FileMover-$Version-$rt.zip"
     $files = @($exe) + (@("README.md", "LICENSE") | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ })

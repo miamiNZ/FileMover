@@ -35,6 +35,11 @@ public static class CopySessionManager
 {
     private static readonly JsonSerializerOptions _opts = new() { WriteIndented = true };
 
+    /// <summary>Where session manifests are stored. Overridable so tests can use a temp folder.</summary>
+    public static string SessionsDirectory { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "FileMover", "sessions");
+
     // Stable filename derived from the job's source+destination so the same job always maps to the same file.
     public static string GetSessionPath(CopyJob job)
     {
@@ -42,10 +47,8 @@ public static class CopySessionManager
             ? string.Join("|", job.SourceFiles.OrderBy(f => f))
             : job.Source.Path;
         var key  = $"{job.Source.Type}|{job.Source.Host}|{srcKey}|{job.Destination.Type}|{job.Destination.Host}|{job.Destination.Path}";
-        var hash = Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(key)));
-        var dir  = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "FileMover", "sessions");
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
+        var dir  = SessionsDirectory;
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, $"{hash}.json");
     }

@@ -1,8 +1,11 @@
 # ── FileMover project-specific (keep above the standard VisualStudio rules) ──
 
-
-# Single-file publish output
+# Single-file publish output and release zips
 publish/
+dist/
+
+# Browser automation scratch output
+.playwright-mcp/
 
 # Runtime session data + private keys (never commit secrets)
 sessions/

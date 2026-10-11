@@ -38,7 +38,7 @@ public partial class SftpBrowserWindow : Window
             await Task.Run(() =>
             {
                 _sftp = CreateSftpClient(_settings);
-                _sftp.Connect();
+                _sftp.ConnectVerified();
             });
             SetStatus("Connected  —  " + _settings.Username + "@" + _settings.Host, StatusKind.Ok);
             await NavigateAsync(_currentPath, addToHistory: false);
@@ -205,14 +205,7 @@ public partial class SftpBrowserWindow : Window
     private void ShowLoading(bool show) =>
         Dispatcher.InvokeAsync(() => pnlLoading.Visibility = show ? Visibility.Visible : Visibility.Collapsed);
 
-    private static SftpClient CreateSftpClient(EndpointSettings s)
-    {
-        SftpClient c = s.UseKeyFile && !string.IsNullOrWhiteSpace(s.KeyFilePath)
-            ? new SftpClient(s.Host, s.Port, s.Username, new PrivateKeyFile(s.KeyFilePath))
-            : new SftpClient(s.Host, s.Port, s.Username, s.Password);
-        c.ConnectionInfo.Timeout = TimeSpan.FromSeconds(30);
-        return c;
-    }
+    private static SftpClient CreateSftpClient(EndpointSettings s) => SshConnectionFactory.CreateSftp(s);
 }
 
 internal sealed record FolderItem(string Name, string FullPath)

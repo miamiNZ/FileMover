@@ -102,11 +102,8 @@ public partial class MainWindow : Window
         {
             await Task.Run(() =>
             {
-                using var sftp = s.UseKeyFile && !string.IsNullOrWhiteSpace(s.KeyFilePath)
-                    ? new Renci.SshNet.SftpClient(s.Host, s.Port, s.Username, new Renci.SshNet.PrivateKeyFile(s.KeyFilePath))
-                    : new Renci.SshNet.SftpClient(s.Host, s.Port, s.Username, s.Password);
-                sftp.ConnectionInfo.Timeout = TimeSpan.FromSeconds(30);
-                sftp.Connect();
+                using var sftp = SshConnectionFactory.CreateSftp(s);
+                sftp.ConnectVerified();
                 sftp.Disconnect();
             });
             return (true, null);
@@ -505,8 +502,8 @@ public partial class MainWindow : Window
         var permMode = txtPermMode.Text.Trim();
         if (chkSetPerms.IsChecked == true && dst.Type == EndpointType.SSH)
         {
-            try { Convert.ToInt16(permMode, 8); }
-            catch { error = $"'{permMode}' is not a valid octal permission mode (e.g. 644, 664, 755)."; return false; }
+            if (!PermissionParser.TryParse(permMode, out _))
+            { error = $"'{permMode}' is not a valid permission mode (use 3 octal digits, e.g. 644, 664, 755)."; return false; }
         }
 
         job = new CopyJob

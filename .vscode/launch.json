@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "FileMover: Desktop (-d)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-debug",
+      "program": "${workspaceFolder}/src/bin/Debug/net10.0-windows/FileMover.exe",
+      "args": ["-d"],
+      "cwd": "${workspaceFolder}/src",
+      "console": "internalConsole"
+    },
+    {
+      "name": "FileMover: Web (-w)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-debug",
+      "program": "${workspaceFolder}/src/bin/Debug/net10.0-windows/FileMover.exe",
+      "args": ["-w"],
+      "cwd": "${workspaceFolder}/src",
+      "console": "integratedTerminal"
+    }
+  ]
+}

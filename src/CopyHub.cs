@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Microsoft.AspNetCore.SignalR;
-using Renci.SshNet;
 
 namespace FileMover;
 
@@ -38,6 +37,15 @@ public class CopyHub : Hub
             await _ctx.Clients.Client(connId).SendAsync("StateChanged", "copying");
 
             var job = dto.ToCopyJob();
+            var errors = JobValidator.Validate(job);
+            if (errors.Count > 0)
+            {
+                foreach (var error in errors)
+                    await _ctx.Clients.Client(connId).SendAsync("Log",
+                        new { text = $"[{DateTime.Now:HH:mm:ss}] {error}", color = "#f44747" });
+                return;
+            }
+
             CopySessionManager.Delete(job);
 
             var engine = new CopyEngine();
@@ -145,11 +153,8 @@ public class CopyHub : Hub
             try
             {
                 var s = endpoint.ToSettings();
-                using var sftp = s.UseKeyFile && !string.IsNullOrWhiteSpace(s.KeyFilePath)
-                    ? new SftpClient(s.Host, s.Port, s.Username, new PrivateKeyFile(s.KeyFilePath))
-                    : new SftpClient(s.Host, s.Port, s.Username, s.Password);
-                sftp.ConnectionInfo.Timeout = TimeSpan.FromSeconds(30);
-                sftp.Connect();
+                using var sftp = SshConnectionFactory.CreateSftp(s);
+                sftp.ConnectVerified();
 
                 var effectivePath = string.IsNullOrWhiteSpace(path) ? "/" : path;
                 var trimmed = effectivePath.TrimEnd('/');
@@ -180,11 +185,8 @@ public class CopyHub : Hub
             try
             {
                 var s = endpoint.ToSettings();
-                using var sftp = s.UseKeyFile && !string.IsNullOrWhiteSpace(s.KeyFilePath)
-                    ? new SftpClient(s.Host, s.Port, s.Username, new PrivateKeyFile(s.KeyFilePath))
-                    : new SftpClient(s.Host, s.Port, s.Username, s.Password);
-                sftp.ConnectionInfo.Timeout = TimeSpan.FromSeconds(30);
-                sftp.Connect();
+                using var sftp = SshConnectionFactory.CreateSftp(s);
+                sftp.ConnectVerified();
                 sftp.Disconnect();
                 return new SshTestResult(true, null);
             }

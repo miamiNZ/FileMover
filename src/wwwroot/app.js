@@ -10,10 +10,28 @@ let _sshAuth       = { src: false, dst: false };
 let _dstFreeSpace  = -1;
 let _dstFreeTimer  = null;
 
+// ── Access token ─────────────────────────────────────────────────
+// The server prints a URL containing ?token=… on startup. Keep it for this tab only and
+// strip it from the address bar so it doesn't linger in history or get shared by accident.
+function getAccessToken() {
+  const params = new URLSearchParams(location.search);
+  const fromUrl = params.get('token');
+  if (fromUrl) {
+    try { sessionStorage.setItem('fmToken', fromUrl); } catch { /* storage unavailable */ }
+    params.delete('token');
+    const qs = params.toString();
+    history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+    return fromUrl;
+  }
+  try { return sessionStorage.getItem('fmToken') || ''; } catch { return ''; }
+}
+
+const _accessToken = getAccessToken();
+
 // ── SignalR connection ───────────────────────────────────────────
 function buildConnection() {
   connection = new signalR.HubConnectionBuilder()
-    .withUrl('/copyhub')
+    .withUrl('/copyhub', { accessTokenFactory: () => _accessToken })
     .withAutomaticReconnect()
     .build();
 
@@ -54,6 +72,8 @@ function buildConnection() {
     .catch(err => {
       setText('txtStatus', 'Connection failed');
       appendLog('[' + now() + '] SignalR connect error: ' + err, '#f44747');
+      if (!_accessToken)
+        appendLog('[' + now() + '] No access token — open the URL printed in the FileMover console (it ends with ?token=…).', '#ffc53d');
     });
 }
 

@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Renci.SshNet;
+using static FileMover.PathHelpers;
 
 namespace FileMover;
 
@@ -44,6 +45,13 @@ public sealed class CopyEngine
 
         try
         {
+            var errors = JobValidator.Validate(job);
+            if (errors.Count > 0)
+            {
+                foreach (var error in errors) Log(error, LogLevel.Error);
+                return false;
+            }
+
             List<FileEntry> files;
 
             if (session is not null)
@@ -174,7 +182,7 @@ public sealed class CopyEngine
             await Task.Run(() =>
             {
                 using var sftp = CreateSftp(job.Source);
-                sftp.Connect();
+                sftp.ConnectVerified();
                 try
                 {
                     var dirs = new HashSet<string>();
@@ -230,7 +238,7 @@ public sealed class CopyEngine
             await Task.Run(() =>
             {
                 using var sftp = CreateSftp(job.Destination);
-                sftp.Connect();
+                sftp.ConnectVerified();
                 try
                 {
                     foreach (var f in files)
@@ -334,7 +342,7 @@ public sealed class CopyEngine
         else // SSH source
         {
             using var sftp = CreateSftp(job.Source);
-            sftp.Connect();
+            sftp.ConnectVerified();
 
             if (job.Mode == CopyMode.File)
             {
@@ -523,7 +531,7 @@ public sealed class CopyEngine
                     EnsureSftpDir(sftp, SftpDir(file.DestinationPath), dirMode);
                     await CopyLocalSftpAsync(file.SourcePath, file.DestinationPath, sftp, offset, OnChunk, ct);
                     if (fileMode > 0)
-                        try { sftp.ChangePermissions(file.DestinationPath, fileMode); } catch { }
+                        try { sftp.ChangePermissions(file.DestinationPath, PermissionParser.ToSshNetMode(fileMode)); } catch { }
                 }
                 finally { dstPool.Release(sftp); }
             }
@@ -679,7 +687,7 @@ public sealed class CopyEngine
         return await Task.Run(() =>
         {
             using var ssh = CreateSsh(settings);
-            ssh.Connect();
+            ssh.ConnectVerified();
             try
             {
                 var q      = ShellQuote(remotePath);
@@ -690,9 +698,6 @@ public sealed class CopyEngine
             finally { ssh.Disconnect(); }
         }, ct);
     }
-
-    private static string ShellQuote(string path) =>
-        "'" + path.Replace("'", "'\\''") + "'";
 
     // ── Progress helpers ─────────────────────────────────────────
 
@@ -769,23 +774,9 @@ public sealed class CopyEngine
 
     // ── SFTP / SSH factory helpers ───────────────────────────────
 
-    private static SftpClient CreateSftp(EndpointSettings s)
-    {
-        SftpClient c = s.UseKeyFile && !string.IsNullOrWhiteSpace(s.KeyFilePath)
-            ? new SftpClient(s.Host, s.Port, s.Username, new PrivateKeyFile(s.KeyFilePath))
-            : new SftpClient(s.Host, s.Port, s.Username, s.Password);
-        c.ConnectionInfo.Timeout = TimeSpan.FromSeconds(30);
-        return c;
-    }
+    private static SftpClient CreateSftp(EndpointSettings s) => SshConnectionFactory.CreateSftp(s);
 
-    private static SshClient CreateSsh(EndpointSettings s)
-    {
-        SshClient c = s.UseKeyFile && !string.IsNullOrWhiteSpace(s.KeyFilePath)
-            ? new SshClient(s.Host, s.Port, s.Username, new PrivateKeyFile(s.KeyFilePath))
-            : new SshClient(s.Host, s.Port, s.Username, s.Password);
-        c.ConnectionInfo.Timeout = TimeSpan.FromSeconds(30);
-        return c;
-    }
+    private static SshClient CreateSsh(EndpointSettings s) => SshConnectionFactory.CreateSsh(s);
 
     // ── Directory helpers ────────────────────────────────────────
 
@@ -809,43 +800,15 @@ public sealed class CopyEngine
                 {
                     sftp.CreateDirectory(current);
                     if (dirMode > 0)
-                        try { sftp.ChangePermissions(current, dirMode); } catch { }
+                        try { sftp.ChangePermissions(current, PermissionParser.ToSshNetMode(dirMode)); } catch { }
                 }
             }
             catch { }
         }
     }
 
-    // ── Path helpers ─────────────────────────────────────────────
-
-    private static string BuildDestPath(EndpointSettings dest, string fileName)
-        => dest.Type == EndpointType.SSH
-            ? $"{dest.Path.TrimEnd('/')}/{fileName}"
-            : Path.Combine(dest.Path, fileName);
-
-    private static string BuildDestRelPath(EndpointSettings dest, string relativePath)
-        => dest.Type == EndpointType.SSH
-            ? $"{dest.Path.TrimEnd('/')}/{relativePath.Replace('\\', '/')}"
-            : Path.Combine(dest.Path, relativePath);
-
-    private static string SftpDir(string path)
-    {
-        var i = path.LastIndexOf('/');
-        return i > 0 ? path[..i] : "/";
-    }
-
-    private static string SftpFileName(string path) =>
-        path.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? path;
-
-    private static string FriendlyName(string path, EndpointType type) =>
-        type == EndpointType.SSH ? SftpFileName(path) : Path.GetFileName(path);
-
-    private static short ParseOctalMode(string raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw)) return 0;
-        try { return Convert.ToInt16(raw.Trim(), 8); }
-        catch { return 0; }
-    }
+    private static short ParseOctalMode(string raw) =>
+        PermissionParser.TryParse(raw, out var mode) ? mode : (short)0;
 
     // ── Logging ──────────────────────────────────────────────────
 
@@ -881,7 +844,16 @@ internal sealed class SftpPool : IDisposable
                 try { c.Dispose(); } catch { }
             }
         }
-        return Connect();
+        try
+        {
+            return Connect();
+        }
+        catch
+        {
+            // Give the slot back, otherwise every failed connect permanently shrinks the pool.
+            _sem.Release();
+            throw;
+        }
     }
 
     public void Release(SftpClient client)
@@ -898,15 +870,17 @@ internal sealed class SftpPool : IDisposable
 
     private SftpClient Connect()
     {
-        SftpClient c;
-        if (_settings.UseKeyFile && !string.IsNullOrWhiteSpace(_settings.KeyFilePath))
-            c = new SftpClient(_settings.Host, _settings.Port, _settings.Username,
-                    new PrivateKeyFile(_settings.KeyFilePath));
-        else
-            c = new SftpClient(_settings.Host, _settings.Port,
-                    _settings.Username, _settings.Password);
-        c.Connect();
-        return c;
+        var c = SshConnectionFactory.CreateSftp(_settings);
+        try
+        {
+            c.ConnectVerified();
+            return c;
+        }
+        catch
+        {
+            c.Dispose();
+            throw;
+        }
     }
 
     public void Dispose()

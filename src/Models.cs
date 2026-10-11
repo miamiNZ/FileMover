@@ -143,15 +143,12 @@ public static class DiskSpaceHelper
         {
             return await Task.Run(() =>
             {
-                using var ssh = s.UseKeyFile && !string.IsNullOrWhiteSpace(s.KeyFilePath)
-                    ? new Renci.SshNet.SshClient(s.Host, s.Port, s.Username, new Renci.SshNet.PrivateKeyFile(s.KeyFilePath))
-                    : new Renci.SshNet.SshClient(s.Host, s.Port, s.Username, s.Password);
-                ssh.ConnectionInfo.Timeout = TimeSpan.FromSeconds(15);
-                ssh.Connect();
+                using var ssh = SshConnectionFactory.CreateSsh(s, TimeSpan.FromSeconds(15));
+                ssh.ConnectVerified();
                 try
                 {
-                    using var cmd = ssh.RunCommand($"df -Pk {ShellQuote(path)} 2>/dev/null | awk 'NR==2 {{print $4}}'");
-                    return long.TryParse(cmd.Result.Trim(), out long kb) ? kb * 1024L : -1L;
+                    using var cmd = ssh.RunCommand($"df -Pk {PathHelpers.ShellQuote(path)} 2>/dev/null | awk 'NR==2 {{print $4}}'");
+                    return ParseDfKilobytes(cmd.Result);
                 }
                 finally { ssh.Disconnect(); }
             });
@@ -180,5 +177,7 @@ public static class DiskSpaceHelper
         });
     }
 
-    private static string ShellQuote(string s) => "'" + s.Replace("'", "'\\''") + "'";
+    /// <summary>Converts the KB figure printed by <c>df -Pk … | awk</c> to bytes; -1 when unparseable.</summary>
+    public static long ParseDfKilobytes(string? output) =>
+        long.TryParse(output?.Trim(), out long kb) && kb >= 0 ? kb * 1024L : -1L;
 }

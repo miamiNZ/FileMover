@@ -59,11 +59,11 @@ publish: ## Publish single-file self-contained EXE (RUNTIME=win-x64|win-arm64)
 	dotnet publish $(PROJECT) -c Release -r $(RUNTIME) --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=$(VERSION) -o $(PUBLISH)
 
 publish-arm64: ## Publish the win-arm64 EXE
-	$(MAKE) publish RUNTIME=win-arm64
+	"$(MAKE)" publish RUNTIME=win-arm64
 
 publish-all: ## Publish win-x64 and win-arm64
-	$(MAKE) publish RUNTIME=win-x64
-	$(MAKE) publish RUNTIME=win-arm64
+	"$(MAKE)" publish RUNTIME=win-x64
+	"$(MAKE)" publish RUNTIME=win-arm64
 
 package: test publish-all ## Test, publish both runtimes and zip them with SHA-256 checksums into dist/
 	$(PS) -File scripts/package.ps1 -Version $(VERSION)
